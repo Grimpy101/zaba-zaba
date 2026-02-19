@@ -8,7 +8,9 @@ import torchmetrics
 import torchmetrics.functional.classification
 import tqdm
 
-from . import perch, data, classifier
+import perch
+import data
+import classifier
 
 
 @dataclasses.dataclass
