@@ -42,7 +42,16 @@ class ZabeDataset(torch.utils.data.Dataset):
         for species_folder in tqdm.tqdm(species_folders):
             label = SPECIES[species_folder]
             full_path = os.path.join(data_dir, species_folder)
-            files = [os.path.join(data_dir, item) for item in os.listdir(full_path) if os.path.isfile(os.path.join(full_path, item))]
+            files = [os.path.join(full_path, item) for item in os.listdir(full_path) if os.path.isfile(os.path.join(full_path, item))]
+            
+            duration = 0.0
+            for file in files:
+                with soundfile.SoundFile(file, mode='r') as f:
+                    duration += (f.frames / f.samplerate)
+            
+            if duration < 50.0:
+                continue
+            
             for file in files:
                 with soundfile.SoundFile(file, mode='r') as f:
                     audio = f.read(dtype='float32')
