@@ -38,6 +38,7 @@ def evaluate(
     learning: ModelLearning,
     perch: perch.PerchV2,
     data: torch.utils.data.DataLoader[data.ZabeDataset],
+    classes_count: int,
     experiment: comet_ml.CometExperiment
 ):
     learning.model.eval()
@@ -55,13 +56,13 @@ def evaluate(
     f1_micro = torchmetrics.functional.classification.multiclass_f1_score(
         predictions,
         outputs,
-        data.dataset.unique, # type: ignore
+        classes_count,
         average='micro'
     )
     f1_macro = torchmetrics.functional.classification.multiclass_f1_score(
         predictions,
         outputs,
-        data.dataset.unique, # type: ignore
+        classes_count,
         average='macro'
     )
     
@@ -76,6 +77,7 @@ def training(
     perch: perch.PerchV2,
     train_data: torch.utils.data.DataLoader[data.ZabeDataset],
     val_data: torch.utils.data.DataLoader[data.ZabeDataset],
+    classes_count: int,
     epochs: int,
     experiment: comet_ml.CometExperiment,
 ):
@@ -98,7 +100,7 @@ def training(
             experiment.log_metric("loss", loss.item(), step=step)
             step += 1
         
-        evaluate(learning, perch, val_data, experiment)
+        evaluate(learning, perch, val_data, classes_count, experiment)
 
 
 def main(data_dir: str):
@@ -122,14 +124,14 @@ def main(data_dir: str):
     
     print("Preparing datasets...")
     
-    train_data, test_data, val_data = data.load_datasets(
+    train_data, test_data, val_data, unique_classes = data.load_datasets(
         data_dir,
         int(hyperparameters['batch_size'])
     )
     
     print("Init model...")
     
-    model = classifier.NeuralNetwork1(1536, train_data.dataset.unique) # type: ignore
+    model = classifier.NeuralNetwork1(1536, unique_classes)
     
     print("Init loss function and optimizer...")
 
@@ -145,6 +147,7 @@ def main(data_dir: str):
             perchv2,
             train_data,
             val_data,
+            unique_classes,
             hyperparameters['epochs'], # type: ignore
             experiment
         )
@@ -153,6 +156,7 @@ def main(data_dir: str):
             learning,
             perchv2,
             test_data,
+            unique_classes,
             experiment
         )
 
