@@ -91,7 +91,9 @@ class ZabeDataset(torch.utils.data.Dataset):
         offset = self.audio_offsets[index]
         label = self.labels[index]
         
-        data, _ = librosa.load(file, sr=32_000, mono=True, offset=offset, duration=5)
+        offset = offset / 32_000
+        duration = self.sample_length / 32_000
+        data, _ = librosa.load(file, sr=32_000, mono=True, offset=offset, duration=duration)
         pad_width = self.sample_length - len(data)
         if pad_width > 0:
             data = numpy.pad(data, (0, pad_width), mode='constant', constant_values=0)
