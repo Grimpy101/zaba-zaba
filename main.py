@@ -1,8 +1,8 @@
 import argparse
 import dataclasses
-import comet_ml
-import comet_ml.integration
-import comet_ml.integration.pytorch
+#import comet_ml
+#import comet_ml.integration
+#import comet_ml.integration.pytorch
 import torch
 import torchmetrics
 import torchmetrics.functional.classification
@@ -39,7 +39,7 @@ def evaluate(
     perch: perch.PerchV2,
     data: torch.utils.data.DataLoader[data.ZabeDataset],
     classes_count: int,
-    experiment: comet_ml.CometExperiment
+    #experiment: comet_ml.CometExperiment
 ):
     learning.model.eval()
     predictions = []
@@ -66,8 +66,8 @@ def evaluate(
         average='macro'
     )
     
-    experiment.log_metric("f1_micro", f1_micro)
-    experiment.log_metric("f1_macro", f1_macro)
+    #experiment.log_metric("f1_micro", f1_micro)
+    #experiment.log_metric("f1_macro", f1_macro)
     
     print(f"  Error: F1 micro: {f1_micro}, F1 macro: {f1_macro} \n")
 
@@ -79,14 +79,14 @@ def training(
     val_data: torch.utils.data.DataLoader[data.ZabeDataset],
     classes_count: int,
     epochs: int,
-    experiment: comet_ml.CometExperiment,
+    #experiment: comet_ml.CometExperiment,
 ):
-    comet_ml.integration.pytorch.watch(learning.model)
+    #comet_ml.integration.pytorch.watch(learning.model)
     step = 0
     
     for t in range(epochs):
         print(f"Epoch: {t}")
-        experiment.log_current_epoch(t)
+        # experiment.log_current_epoch(t)
         
         learning.model.train()
         for inputs, outputs in tqdm.tqdm(train_data):
@@ -97,10 +97,12 @@ def training(
             learning.optimizer.step()
             learning.optimizer.zero_grad()
             
-            experiment.log_metric("loss", loss.item(), step=step)
+            # experiment.log_metric("loss", loss.item(), step=step)
             step += 1
         
-        evaluate(learning, perch, val_data, classes_count, experiment)
+        evaluate(learning, perch, val_data, classes_count,
+                 #experiment
+        )
 
 
 def main(data_dir: str):
@@ -110,17 +112,17 @@ def main(data_dir: str):
     perchv2 = perch.load_perch_from_onnx("perch_v2.onnx")
     perchv2.eval()
     
-    experiment = comet_ml.start(
+    """experiment = comet_ml.start(
         api_key="zdwRvLYZJ7dxhgmCOKHZBRIgC",
         project_name="zabe",
         workspace="grimpy101"
-    )
+    )"""
     hyperparameters = {
         'learning_rate': 1e-3,
         'batch_size': 128,
         'epochs': 1
     }
-    experiment.log_parameters(hyperparameters)
+    #experiment.log_parameters(hyperparameters)
     
     print("Preparing datasets...")
     
@@ -141,24 +143,24 @@ def main(data_dir: str):
     learning = ModelLearning(model, loss_function, optimizer)
     
     print("Start training...")
-    with experiment.train():
-        training(
-            learning,
-            perchv2,
-            train_data,
-            val_data,
-            unique_classes,
-            hyperparameters['epochs'], # type: ignore
-            experiment
-        )
-    with experiment.test():
-        evaluate(
-            learning,
-            perchv2,
-            test_data,
-            unique_classes,
-            experiment
-        )
+    #with experiment.train():
+    training(
+        learning,
+        perchv2,
+        train_data,
+        val_data,
+        unique_classes,
+        hyperparameters['epochs'], # type: ignore
+        #experiment
+    )
+    #with experiment.test():
+    evaluate(
+        learning,
+        perchv2,
+        test_data,
+        unique_classes,
+        #experiment
+    )
 
 
 if __name__ == "__main__":
