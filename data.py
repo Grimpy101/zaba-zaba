@@ -13,6 +13,7 @@ import torch
 
 import tqdm
 import soundfile
+import librosa
 
 
 @dataclasses.dataclass
@@ -56,8 +57,7 @@ class ZabeDataset(torch.utils.data.Dataset):
             for file in files:
                 with soundfile.SoundFile(file, mode='r') as f:
                     duration += (f.frames / f.samplerate)
-                    audio = f.read(dtype='float32')
-                audio_lengths.append(len(audio))
+                    audio_lengths.append(f.frames)
             
             if duration < 50.0:
                 continue
@@ -91,12 +91,7 @@ class ZabeDataset(torch.utils.data.Dataset):
         offset = self.audio_offsets[index]
         label = self.labels[index]
         
-        # We open the audio file to read samples
-        with soundfile.SoundFile(file, mode='r') as f:
-            audio = f.read(dtype='float32')
-        
-        # We take only a fixed-length window inside audio (based on given offset), and optionally pad with zeros
-        data = audio[offset:offset + self.sample_length]
+        data, _ = librosa.load(file, sr=32_000, mono=True, offset=offset, duration=5)
         pad_width = self.sample_length - len(data)
         if pad_width > 0:
             data = numpy.pad(data, (0, pad_width), mode='constant', constant_values=0)

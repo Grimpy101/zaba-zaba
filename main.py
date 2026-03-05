@@ -117,8 +117,8 @@ def main(data_dir: str):
     )
     hyperparameters = {
         'learning_rate': 1e-3,
-        'batch_size': 64,
-        'epochs': 100
+        'batch_size': 128,
+        'epochs': 1
     }
     experiment.log_parameters(hyperparameters)
     
