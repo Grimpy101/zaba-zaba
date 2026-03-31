@@ -113,9 +113,9 @@ def main(data_dir: str):
     perchv2.eval()
     
     """experiment = comet_ml.start(
-        api_key="zdwRvLYZJ7dxhgmCOKHZBRIgC",
-        project_name="zabe",
-        workspace="grimpy101"
+        api_key="",
+        project_name="",
+        workspace=""
     )"""
     hyperparameters = {
         'learning_rate': 1e-3,
