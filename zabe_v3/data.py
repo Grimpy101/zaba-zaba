@@ -30,15 +30,20 @@ def species_label(species: str):
         label_text = 'Pelophylax'
     elif 'Hyla_arborea' == species:
         label_text = 'Hyla_arborea'
-    elif 'Bufo_viridis' == species:
+    elif 'Bufotes_viridis' == species:
         label_text = 'Bufo_viridis'
     return SPECIES.get(label_text, 3)
 
 
+@dataclasses.dataclass
+class Sample:
+    file: str
+    index: int
+
+
 class ZabeDataset(torch.utils.data.Dataset[tuple[torch.Tensor, int]]):
     def __init__(self, data_root: str):
-        self.sample_length = SAMPLE_LENGTH
-        self.files: list[str] = []
+        self.samples: list[Sample] = []
         
         labels: list[int] = []
         
@@ -59,20 +64,25 @@ class ZabeDataset(torch.utils.data.Dataset[tuple[torch.Tensor, int]]):
                 if os.path.isfile(os.path.join(full_path, item))
             ]
             
-            self.files.extend(files)
-            labels.extend([label_id] * len(files))
+            for file in files:
+                arr = numpy.load(file)
+                n = arr.shape[0]
+                for i in range(n):
+                    self.samples.append(Sample(file, i))
+                    labels.append(label_id)
         
         self.labels: numpy.typing.NDArray[numpy.uint32] = numpy.array(labels)
         
     def __len__(self):
-        return len(self.files)
+        return len(self.samples)
     
     @typing.override
     def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
-        file = self.files[index]
+        sample = self.samples[index]
         label = self.labels[index]
         
-        data: numpy.typing.NDArray[numpy.float32] = numpy.load(file)
+        npy: numpy.typing.NDArray[numpy.float32] = numpy.load(sample.file)
+        data = npy[sample.index]
         data: torch.Tensor = torch.from_numpy(data)
         return data, label
 
@@ -101,8 +111,8 @@ def get_data(data_root: str) -> DatasetData:
         random_state=42
     )
     
-    train_indices, test_indices = next(sss.split(dataset.files, dataset.labels))
-    test_indices, validation_indices = next(sss_val.split(dataset.files[test_indices], dataset.labels[test_indices]))
+    train_indices, test_indices = next(sss.split(dataset.labels, dataset.labels))
+    test_indices, validation_indices = next(sss_val.split(dataset.labels[test_indices], dataset.labels[test_indices]))
     
     train_dataset = torch.utils.data.Subset(
         dataset,
@@ -152,7 +162,7 @@ def get_data(data_root: str) -> DatasetData:
     unique_classes: int = numpy.unique(dataset.labels).shape[0]
     
     print(f"Train: {len(train_dataset)}, Test: {len(test_dataset)}, Validation: {len(validation_dataset)}")
-    print(f"  {unique_classes} unique classes")
+    print(f"  {unique_classes} unique classes ({numpy.unique(dataset.labels)})")
     
     return DatasetData(
         train_loader,
