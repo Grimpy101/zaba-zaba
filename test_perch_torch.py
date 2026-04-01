@@ -8,8 +8,8 @@ import tensorflow_hub
 import tensorflow
 tensorflow.experimental.numpy.experimental_enable_numpy_behavior()
 
-from ..zabe_v1 import perch
-import audio_processing
+from zabe_v1 import perch
+from utils import audio_processing
 
 
 OVERLAP_DURATION_SECS = 1.0
