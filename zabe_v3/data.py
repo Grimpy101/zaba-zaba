@@ -43,8 +43,8 @@ class Sample:
 
 class ZabeDataset(torch.utils.data.Dataset[tuple[torch.Tensor, int]]):
     def __init__(self, data_root: str):
-        self.samples: list[Sample] = []
-        
+        all_files: list[str] = []
+        indices: list[int] = []
         labels: list[int] = []
         
         species_folders = [
@@ -68,21 +68,25 @@ class ZabeDataset(torch.utils.data.Dataset[tuple[torch.Tensor, int]]):
                 arr = numpy.load(file)
                 n = arr.shape[0]
                 for i in range(n):
-                    self.samples.append(Sample(file, i))
+                    all_files.append(file)
+                    indices.append(i)
                     labels.append(label_id)
         
         self.labels: numpy.typing.NDArray[numpy.uint32] = numpy.array(labels)
+        self.files = numpy.array(all_files)
+        self.indices = numpy.array(indices)
         
     def __len__(self):
-        return len(self.samples)
+        return len(self.indices)
     
     @typing.override
     def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
-        sample = self.samples[index]
+        file = self.files[index]
+        i: int = self.indices[index]
         label = self.labels[index]
         
-        npy: numpy.typing.NDArray[numpy.float32] = numpy.load(sample.file)
-        data = npy[sample.index]
+        npy: numpy.typing.NDArray[numpy.float32] = numpy.load(file)
+        data = npy[i]
         data: torch.Tensor = torch.from_numpy(data)
         return data, label
 
@@ -98,6 +102,16 @@ class DatasetData:
 def get_data(data_root: str) -> DatasetData:
     dataset = ZabeDataset(data_root)
     
+    file_to_indices: dict[str, list[int]] = collections.defaultdict(list)
+    for index, file_path in enumerate(dataset.files):
+        file_to_indices[file_path].append(index)
+    unique_files = list(file_to_indices.keys())
+    
+    file_labels = numpy.array([
+        collections.Counter(dataset.labels[file_to_indices[f]]).most_common(1)[0][0]
+        for f in unique_files
+    ])
+    
     # We define splitting of data
     # StratifiedShuffleSplit - ensures fair distribution inside classes
     sss = sklearn.model_selection.StratifiedShuffleSplit(
@@ -111,8 +125,26 @@ def get_data(data_root: str) -> DatasetData:
         random_state=42
     )
     
-    train_indices, test_indices = next(sss.split(dataset.labels, dataset.labels))
-    test_indices, validation_indices = next(sss_val.split(dataset.labels[test_indices], dataset.labels[test_indices]))
+    train_file_idx, temp_file_idx = next(sss.split(unique_files, file_labels))
+    temp_file_labels = file_labels[temp_file_idx]
+    test_file_idx, val_file_idx = next(
+        sss_val.split(temp_file_idx, temp_file_labels)
+    )
+    test_file_idx = temp_file_idx[test_file_idx]
+    val_file_idx  = temp_file_idx[val_file_idx]
+    
+    train_indices = numpy.concatenate([
+        file_to_indices[unique_files[i]] for i in train_file_idx
+    ])
+    test_indices = numpy.concatenate([
+        file_to_indices[unique_files[i]] for i in test_file_idx
+    ])
+    validation_indices = numpy.concatenate([
+        file_to_indices[unique_files[i]] for i in val_file_idx
+    ])
+    
+    assert not (set(train_file_idx) & set(test_file_idx) & set(val_file_idx)), \
+        "File leakage detected between splits!"
     
     train_dataset = torch.utils.data.Subset(
         dataset,
