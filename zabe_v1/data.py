@@ -1,5 +1,4 @@
 import collections
-import csv
 import dataclasses
 import math
 import os
@@ -12,101 +11,100 @@ import sklearn.model_selection
 import torch
 
 import tqdm
-import soundfile
-import librosa
+
+
+SAMPLE_LENGTH = 160_000
+BATCH_SIZE = 128
+
+
+SPECIES = {
+    'Hyla_arborea': 0,
+    'Pelophylax': 1,
+    'Bufo_viridis': 2,
+    'Other': 3
+}
+
+def species_label(species: str):
+    label_text = 'Other'
+    if 'Pelophylax' in species:
+        label_text = 'Pelophylax'
+    elif 'Hyla_arborea' == species:
+        label_text = 'Hyla_arborea'
+    elif 'Bufotes_viridis' == species:
+        label_text = 'Bufo_viridis'
+    return SPECIES.get(label_text, 3)
+
+
+class ZabeDataset(torch.utils.data.Dataset[tuple[torch.Tensor, int]]):
+    def __init__(self, data_root: str):
+        all_files: list[str] = []
+        indices: list[int] = []
+        labels: list[int] = []
+        
+        species_folders = [
+            item
+            for item in os.listdir(data_root)
+            if os.path.isdir(os.path.join(data_root, item))
+        ]
+        print(f"{len(species_folders)} species")
+        
+        for species_folder in tqdm.tqdm(species_folders):
+            label_id = species_label(species_folder)
+            
+            full_path = os.path.join(data_root, species_folder)
+            files = [
+                os.path.join(full_path, item)
+                for item in os.listdir(full_path)
+                if os.path.isfile(os.path.join(full_path, item))
+            ]
+            
+            for file in files:
+                arr = numpy.load(file)
+                n = arr.shape[0]
+                for i in range(n):
+                    all_files.append(file)
+                    indices.append(i)
+                    labels.append(label_id)
+        
+        self.labels: numpy.typing.NDArray[numpy.uint32] = numpy.array(labels)
+        self.files = numpy.array(all_files)
+        self.indices = numpy.array(indices)
+        
+    def __len__(self):
+        return len(self.indices)
+    
+    @typing.override
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
+        file = self.files[index]
+        i: int = self.indices[index]
+        label = self.labels[index]
+        
+        npy: numpy.typing.NDArray[numpy.float32] = numpy.load(file)
+        data = npy[i]
+        data: torch.Tensor = torch.from_numpy(data)
+        return data, label
 
 
 @dataclasses.dataclass
-class Sample:
-    file: str
-    offset: int
-    label: int
+class DatasetData:
+    training_set: torch.utils.data.DataLoader[tuple[torch.Tensor, int]]
+    test_set: torch.utils.data.DataLoader[tuple[torch.Tensor, int]]
+    validation_set: torch.utils.data.DataLoader[tuple[torch.Tensor, int]]
+    unique_labels: int
 
 
-class ZabeDataset(torch.utils.data.Dataset):
-    def __init__(self, data_dir: str, sample_length: int, overlap: int):
-        # Length of each audio sample
-        self.sample_length = sample_length
-        self.classes = 0
-
-        species_folders = [
-            item
-            for item in os.listdir(data_dir)
-            if os.path.isdir(os.path.join(data_dir, item))
-        ]
-        
-        print(f"{len(species_folders)} species")
-        
-        final_files = []
-        audio_offsets = []
-        labels = []
-        
-        with open("labels.csv", 'w') as f:
-            writer = csv.writer(f)
-            for i, species in enumerate(species_folders):
-                writer.writerow((str(i), species))
-        
-        i = 0
-        for species_folder in tqdm.tqdm(species_folders):
-            full_path = os.path.join(data_dir, species_folder)
-            files = [os.path.join(full_path, item) for item in os.listdir(full_path) if os.path.isfile(os.path.join(full_path, item))]
-            
-            audio_lengths = []
-            
-            duration = 0.0
-            for file in files:
-                with soundfile.SoundFile(file, mode='r') as f:
-                    duration += (f.frames / f.samplerate)
-                    audio_lengths.append(f.frames)
-            
-            if duration < 50.0:
-                continue
-            
-            for (file, audio_length) in zip(files, audio_lengths):
-                step = sample_length - overlap
-                offsets = numpy.arange(0, audio_length - sample_length + 1, step)
-                for offset in offsets:
-                    final_files.append(file)
-                    audio_offsets.append(offset)
-                    labels.append(i)
-            i += 1
-        
-        # Three arrays combined represent a sample at each index
-        #  files - contains filepath to audio file
-        self.files = final_files
-        #  offsets - contains starting index of the sampled audio in the audio file
-        self.audio_offsets = numpy.array(audio_offsets)
-        #  labels - the classification of the sample
-        self.labels = numpy.array(labels)
-        
-        self.unique = numpy.unique(self.labels).shape[0]
-        
+def get_data(data_root: str) -> DatasetData:
+    dataset = ZabeDataset(data_root)
     
-    def __len__(self):
-        return len(self.audio_offsets)
-
-    def __getitem__(self, index: int)  -> typing.Tuple[torch.Tensor, int]:
-        # We only have the file we need to read, the offset into the file, and the label
-        file = self.files[index]
-        offset = self.audio_offsets[index]
-        label = self.labels[index]
-        
-        offset = offset / 32_000
-        duration = self.sample_length / 32_000
-        data, _ = librosa.load(file, sr=32_000, mono=True, offset=offset, duration=duration)
-        pad_width = self.sample_length - len(data)
-        if pad_width > 0:
-            data = numpy.pad(data, (0, pad_width), mode='constant', constant_values=0)
-        data = torch.from_numpy(data)
-        
-        return data, label
+    file_to_indices: dict[str, list[int]] = collections.defaultdict(list)
+    for index, file_path in enumerate(dataset.files):
+        file_to_indices[file_path].append(index)
+    unique_files = list(file_to_indices.keys())
     
-
-def load_datasets(data_dir: str, batch_size: int):
-    sample_length = 160_000
-    overlap = 32_000  # How much do audio samples in a single audio clip overlap
-    
-    dataset = ZabeDataset(data_dir, sample_length, overlap)
+    file_labels = numpy.array([
+        collections.Counter(dataset.labels[file_to_indices[f]]).most_common(1)[0][0]
+        for f in unique_files
+    ])
     
     # We define splitting of data
     # StratifiedShuffleSplit - ensures fair distribution inside classes
@@ -120,34 +118,81 @@ def load_datasets(data_dir: str, batch_size: int):
         test_size=0.5,
         random_state=42
     )
-    train_indices, test_indices = next(sss.split(dataset.audio_offsets, dataset.labels))
-    test_indices, validation_indices = next(sss_val.split(dataset.audio_offsets[test_indices], dataset.labels[test_indices]))
     
-    train_dataset: torch.utils.data.Subset[ZabeDataset] = torch.utils.data.Subset(dataset, train_indices)
-    test_dataset: torch.utils.data.Subset[ZabeDataset] = torch.utils.data.Subset(dataset, test_indices)
-    validation_dataset: torch.utils.data.Subset[ZabeDataset] = torch.utils.data.Subset(dataset, validation_indices)
+    train_file_idx, temp_file_idx = next(sss.split(unique_files, file_labels))
+    temp_file_labels = file_labels[temp_file_idx]
+    test_file_idx, val_file_idx = next(
+        sss_val.split(temp_file_idx, temp_file_labels)
+    )
+    test_file_idx = temp_file_idx[test_file_idx]
+    val_file_idx  = temp_file_idx[val_file_idx]
     
-    print(f"Train: {len(train_dataset)}, Test: {len(test_dataset)}, Validation: {len(validation_dataset)}")
-    print(f"  {dataset.unique} unique classes")
+    train_indices = numpy.concatenate([
+        file_to_indices[unique_files[i]] for i in train_file_idx
+    ])
+    test_indices = numpy.concatenate([
+        file_to_indices[unique_files[i]] for i in test_file_idx
+    ])
+    validation_indices = numpy.concatenate([
+        file_to_indices[unique_files[i]] for i in val_file_idx
+    ])
+    
+    assert not (set(train_file_idx) & set(test_file_idx) & set(val_file_idx)), \
+        "File leakage detected between splits!"
+    
+    train_dataset = torch.utils.data.Subset(
+        dataset,
+        train_indices  # pyright: ignore[reportArgumentType]
+    )
+    test_dataset = torch.utils.data.Subset(
+        dataset,
+        test_indices  # pyright: ignore[reportArgumentType]
+    )
+    validation_dataset = torch.utils.data.Subset(
+        dataset,
+        validation_indices  # pyright: ignore[reportArgumentType]
+    )
     
     # We want undersampling - we weight the samples so those from larger classes are less likely to be sampled
     train_label_counts = collections.Counter(dataset.labels[train_dataset.indices])
     class_weights = {
         label: 1.0 / math.sqrt(count)
-        for label, count in train_label_counts.items()
+        for label, count
+        in train_label_counts.items()
     }
     sample_weights = torch.tensor(
-        [class_weights[label] for label in dataset.labels[train_dataset.indices]],
+        [class_weights[label]
+                for label
+                in dataset.labels[train_dataset.indices]],
         dtype=torch.double
     )
     training_sampler = torch.utils.data.WeightedRandomSampler(
-        weights=sample_weights, # type: ignore
+        weights=sample_weights,  # pyright: ignore[reportArgumentType]
         num_samples=len(sample_weights),
         replacement=True
     )
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        sampler=training_sampler
+    )
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=BATCH_SIZE
+    )
+    validation_loader = torch.utils.data.DataLoader(
+        validation_dataset,
+        batch_size=BATCH_SIZE
+    )
     
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=training_sampler)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
-    validation_loader = torch.utils.data.DataLoader(validation_dataset, batch_size=batch_size)
+    unique_classes: int = numpy.unique(dataset.labels).shape[0]
     
-    return train_loader, test_loader, validation_loader, dataset.unique
+    print(f"Train: {len(train_dataset)}, Test: {len(test_dataset)}, Validation: {len(validation_dataset)}")
+    print(f"  {unique_classes} unique classes ({numpy.unique(dataset.labels)})")
+    
+    return DatasetData(
+        train_loader,
+        test_loader,
+        validation_loader,
+        unique_classes
+    )
