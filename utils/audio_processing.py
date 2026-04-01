@@ -26,4 +26,6 @@ def preprocess_file(
         snippets.append(snippet)
         start += step_samples
     
+    snippets = numpy.array(snippets)
+    
     return snippets, sample_rate
