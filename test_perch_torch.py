@@ -25,20 +25,15 @@ def pytorch_perch_inference(
     
     snippets = torch.from_numpy(snippets)
     
-    try:
-        with torch.no_grad():
-            embeddings, _, _, _ = perchv2(snippets)
-            return embeddings.numpy(force=True)
-    except Exception as e:
-        print(f"Failed: {e}")
-    return None
+    embeddings, _, _, _ = perchv2(snippets)
+    return embeddings.numpy(force=True)
 
 
 def tensorflow_perch_inference(snippets):
-    model = tensorflow_hub.load('https://www.kaggle.com/models/google/bird-vocalization-classifier/tensorFlow2/perch_v2/2')
-    model_outputs = model.signatures['serving_default'](inputs=snippets[numpy.newaxis, :])
+    model = tensorflow_hub.load('https://www.kaggle.com/api/v1/models/google/bird-vocalization-classifier/tensorFlow2/perch_v2_cpu/1/download')
+    model_outputs = model.signatures['serving_default'](inputs=snippets)
     embeddings = model_outputs['embedding']
-    return embeddings
+    return embeddings.numpy()
 
 
 if __name__ == '__main__':
@@ -53,8 +48,5 @@ if __name__ == '__main__':
     embeddings_torch = pytorch_perch_inference(snippets, arguments.perchv2)
     embeddings_tensorflow = tensorflow_perch_inference(snippets)
     
-    print(embeddings_torch)
-    print(embeddings_tensorflow)
-    
-    if embeddings_torch == embeddings_tensorflow:
+    if (embeddings_torch == embeddings_tensorflow).all():
         print("Enako!")
