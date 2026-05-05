@@ -1,0 +1,28 @@
+[general]
+model = 'perchv2'
+model_path = ''
+
+[hyperparameters]
+epochs = 10
+learning_rate = 0.001
+batch_size = 128
+augmentations = true
+mixing = true
+mixing_distribution_alpha = 0.4
+
+
+[comet]
+key = ""
+project = ""
+workspace = ""
+
+[data]
+sample_rate = 16000
+sample_length = 160000
+sample_overlap = 16000
+data_root = ""
+labels_file = ""
+
+[checkpoint]
+checkpoint_dir = ""
+checkpoint_epoch = 10
